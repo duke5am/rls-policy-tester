@@ -1,0 +1,115 @@
+# rls-policy-tester
+
+Prove that user A cannot read user B's rows — **and prove the test would catch it
+if they could.**
+
+Row Level Security fails silently. A missing policy or a stray `USING (true)`
+does not throw an error; your app works perfectly while every row is readable by
+everyone. There is no compiler for this, and it is the classic way to leak an
+entire table.
+
+```bash
+python3 rls_test_runner.py --dsn "host=localhost dbname=mydb user=postgres" \
+    --include-controls
+```
+
+## Why the negative controls are the point
+
+Most "RLS test" snippets you will find assert that Alice sees her own rows. They
+pass on a table with **RLS switched off entirely** — because Alice still sees her
+own rows. They prove nothing.
+
+So this ships with control suites that are *supposed to fail*. Running them
+against a deliberately unprotected table:
+
+```
+6 passed 8 failed 1 warn   (15 fact(s) and check(s) total)
+RESULT: DETECTED -- this is a negative control and the suite correctly reported
+        the problem (exit 0)
+```
+
+and the failures name the leak and explain it:
+
+```
+FAIL  control.alice.cannot_delete_bob_row          as alice   deny (1 row(s) affected)
+      LEAK: this identity was allowed to modify 1 row(s) belonging to another tenant.
+      why : MUST FAIL. Rolled back.
+      sql : delete from public.demo_open_using_true where org_id = 'b0000000-...'
+      AFFECTED ROWS: this identity modified 1 row(s) that the policy should have
+      refused. The transaction was rolled back, so the database here is unchanged
+      -- in production it would not have been.
+```
+
+Note the sanity checks that make the zeros meaningful — *"verified non-vacuous:
+as admin the same statement returns 2 row(s)"*. A `deny` result is worthless if
+the table is empty or the role is broken.
+
+## What it tests
+
+- an anonymous connection cannot read rows it should not
+- **user A cannot read, UPDATE or DELETE user B's rows**
+- **user A cannot INSERT a row attributed to user B** — the `WITH CHECK` case, and
+  the most commonly missing policy
+- a service role *can* read everything, so your deny tests are not vacuous
+- the same holds through **views and SECURITY DEFINER functions**, not just a
+  plain `SELECT` — joining through a view is a real bypass
+- applied inside a transaction that is rolled back, so a control run never
+  damages the database
+
+## Features that make it usable
+
+- **Test definitions are JSON**, so you add cases without writing Python.
+- `--audit-schema public` walks your catalogs and flags tables with **RLS
+  disabled** and policies that are `PERMISSIVE_TRUE` / `WIDE_OPEN` — it reads
+  `pg_policies`, so it catches a policy nobody reviewed.
+- `--json` for CI, `--only` to run one suite.
+- Exit codes: `0` pass, `1` real failure, `2` the detector itself is broken
+  (a control that was expected to fail and did not), `3` setup error.
+
+## Getting started
+
+Use the included stub to try it end to end; it creates the three roles Supabase
+uses (`anon`, `authenticated`, `service_role`) and an `auth.uid()` that reads a
+session setting, exactly as Supabase does:
+
+```bash
+createdb rls_demo
+psql rls_demo -f example_schema/00_auth_stub.sql
+psql rls_demo -f example_schema/schema.sql
+psql rls_demo -f example_schema/policies.sql
+psql rls_demo -f example_schema/views.sql
+psql rls_demo -f example_schema/seed.sql
+
+python3 rls_test_runner.py --dsn "host=localhost dbname=rls_demo user=postgres" \
+    --file tests_definitions/91_negative_control_using_true.json
+```
+
+Then point it at your own database:
+
+```bash
+python3 rls_test_runner.py --dsn "$DATABASE_URL" --audit-schema public
+```
+
+**Use the direct connection string, not a transaction pooler** — `SET ROLE` and
+session settings are session state.
+
+## What this is not
+
+- It is **not a security audit**. It tests the policies you write, against the
+  identities you define. It has no view of your infrastructure, your JWT
+  handling, or your threat model.
+- Anything reachable with the **service key bypasses every policy** it tests.
+- The connecting role normally needs to be a superuser, or hold membership in the
+  roles it switches to. That connection string is powerful — keep it out of
+  version control.
+- Not affiliated with or endorsed by Supabase.
+
+## The full pack
+
+The paid pack adds the complete **tenant-isolation suite (70 checks)** covering a
+real multi-tenant org/membership model, the **joins-views-functions suite (43
+checks)**, three more negative controls, the full `POLICY-PITFALLS.md` with 15
+measured pitfalls (including a view that leaks to `anon` and a `TRUNCATE`
+bypass), and `WRITING-POLICIES.md`.
+
+→ **Supabase RLS Policy Test Suite**: <!-- GUMROAD-LINK -->

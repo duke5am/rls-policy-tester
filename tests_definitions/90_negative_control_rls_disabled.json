@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "suite": "NEGATIVE-CONTROL-rls-disabled",
+  "title": "NEGATIVE CONTROL: RLS was never enabled on the table",
+  "description": "This suite is SUPPOSED TO FAIL. public.demo_open_no_rls is a table identical in shape to public.tasks, seeded with the same two tenants' rows, on which ALTER TABLE ... ENABLE ROW LEVEL SECURITY was never run. Because 00_auth_stub.sql reproduces Supabase's default privileges, anon and authenticated already hold SELECT on it. If any deny check below PASSES, this pack cannot detect the single most common RLS leak and you should not trust it. expected_outcome is \"fail\": the runner exits 0 when it detects the problem and exits 2 when it does not.",
+
+  "expected_outcome": "fail",
+  "admin_identity": "admin",
+  "default_sanity_identity": "admin",
+
+  "setup_reset": [
+    "drop schema if exists public cascade",
+    "drop schema if exists app cascade",
+    "create schema public"
+  ],
+  "setup": [
+    "example_schema/00_auth_stub.sql",
+    "example_schema/schema.sql",
+    "example_schema/policies.sql",
+    "example_schema/views.sql",
+    "example_schema/seed.sql"
+  ],
+
+  "params": {
+    "org_a": "a0000000-0000-4000-8000-000000000001",
+    "org_b": "b0000000-0000-4000-8000-000000000002",
+    "alice": "a1ce0000-0000-4000-8000-00000000000a",
+    "bob": "b0b00000-0000-4000-8000-00000000000b",
+    "dave": "da7e0000-0000-4000-8000-00000000000d"
+  },
+
+  "identities": {
+    "anon": { "role": "anon", "claims": { "role": "anon" } },
+    "alice": { "role": "authenticated", "user_id": ":alice" },
+    "bob": { "role": "authenticated", "user_id": ":bob" },
+    "dave": { "role": "authenticated", "user_id": ":dave" },
+    "admin": { "role": "service_role", "admin": true }
+  },
+
+  "fixtures": {
+    "description": "rls_required is TRUE here even though the table is known to be unprotected. That is the point: the definition states what MUST be true, and preflight reports the gap by name.",
+    "tables": [
+      { "table": "public.demo_open_no_rls", "min_rows": 2, "rls_required": true,
+        "note": "deliberately unprotected: RLS was never enabled" }
+    ]
+  },
+
+  "checks": [
+    {
+      "id": "control.alice.reads_own_tenant_row",
+      "as": "alice",
+      "sql": "select id, title from public.demo_open_no_rls where org_id = :org_a",
+      "expect": "allow",
+      "rows": 1,
+      "why": "The allow half. It passes, which is what makes the failures below meaningful: the table is readable and the rows are there."
+    },
+    {
+      "id": "control.alice.cannot_read_org_b_rows",
+      "as": "alice",
+      "sql": "select id, title, org_id from public.demo_open_no_rls where org_id = :org_b",
+      "expect": "deny",
+      "why": "MUST FAIL. With RLS off there is nothing to stop the query, and Globex's row comes back to Acme's owner. This is the leak the whole pack exists to catch, reproduced on demand."
+    },
+    {
+      "id": "control.alice.sees_exactly_one_tenant",
+      "as": "alice",
+      "sql": "select id from public.demo_open_no_rls",
+      "expect": "rows",
+      "rows": 1,
+      "why": "MUST FAIL: alice sees 2 rows, not 1. An exact count is what turns 'something is visible' into 'too much is visible'."
+    },
+    {
+      "id": "control.anon.reads_nothing",
+      "as": "anon",
+      "sql": "select id, title from public.demo_open_no_rls",
+      "expect": "deny",
+      "why": "MUST FAIL. This is the worst version: an unauthenticated request reads every tenant's rows. Nobody has to log in to steal the table."
+    },
+    {
+      "id": "control.dave.reads_nothing",
+      "as": "dave",
+      "sql": "select id, title from public.demo_open_no_rls",
+      "expect": "deny",
+      "why": "MUST FAIL. Dave belongs to no organisation at all and still reads both tenants' rows."
+    },
+    {
+      "id": "control.alice.cannot_update_bob_row",
+      "as": "alice",
+      "sql": "update public.demo_open_no_rls set title = 'PWNED by alice' where org_id = :org_b",
+      "expect": "deny",
+      "mode": "write",
+      "why": "MUST FAIL with an affected-row count. Writes leak from the same missing switch, and unlike reads they are not recoverable from a backup you did not take."
+    },
+    {
+      "id": "control.alice.cannot_delete_bob_row",
+      "as": "alice",
+      "sql": "delete from public.demo_open_no_rls where org_id = :org_b",
+      "expect": "deny",
+      "mode": "write",
+      "why": "MUST FAIL. Rolled back, so nothing is actually destroyed."
+    },
+    {
+      "id": "control.alice.cannot_insert_attributed_to_bob",
+      "as": "alice",
+      "sql": "insert into public.demo_open_no_rls (org_id, title, created_by) values (:org_b, 'Injected into Globex', :bob)",
+      "expect": "deny",
+      "mode": "write",
+      "why": "MUST FAIL. Alice plants a row inside Globex attributed to bob. With RLS off there is no INSERT policy and no WITH CHECK to refuse it."
+    },
+    {
+      "id": "control.admin.sees_every_row",
+      "as": "admin",
+      "sql": "select id from public.demo_open_no_rls",
+      "expect": "rows",
+      "rows": 2,
+      "why": "The anti-vacuity anchor. Two rows exist; alice must see one and anon none. Every check above is measured against this number."
+    }
+  ]
+}

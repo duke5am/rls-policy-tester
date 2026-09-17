@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "suite": "NEGATIVE-CONTROL-using-true",
+  "title": "NEGATIVE CONTROL: the only policy is USING (true)",
+  "description": "This suite is SUPPOSED TO FAIL. public.demo_open_using_true has RLS enabled -- so `select relrowsecurity from pg_class` says the table is protected, and `select * from pg_policies` returns a row, and a reviewer who checks either one signs it off. The single policy is FOR ALL TO authenticated USING (true) WITH CHECK (true), which grants everything it applies to. This is the second most common leak and the hardest to see, because every dashboard that checks for 'is RLS on?' says yes. strict_audit is true, so preflight fails and names the offending policy. expected_outcome is \"fail\": exit 0 means the leak was detected, exit 2 means this pack cannot see a wide-open policy and you should not trust it.",
+
+  "expected_outcome": "fail",
+  "strict_audit": true,
+  "admin_identity": "admin",
+  "default_sanity_identity": "admin",
+
+  "setup_reset": [
+    "drop schema if exists public cascade",
+    "drop schema if exists app cascade",
+    "create schema public"
+  ],
+  "setup": [
+    "example_schema/00_auth_stub.sql",
+    "example_schema/schema.sql",
+    "example_schema/policies.sql",
+    "example_schema/views.sql",
+    "example_schema/seed.sql"
+  ],
+
+  "params": {
+    "org_a": "a0000000-0000-4000-8000-000000000001",
+    "org_b": "b0000000-0000-4000-8000-000000000002",
+    "alice": "a1ce0000-0000-4000-8000-00000000000a",
+    "bob": "b0b00000-0000-4000-8000-00000000000b",
+    "dave": "da7e0000-0000-4000-8000-00000000000d"
+  },
+
+  "identities": {
+    "anon": { "role": "anon", "claims": { "role": "anon" } },
+    "alice": { "role": "authenticated", "user_id": ":alice" },
+    "bob": { "role": "authenticated", "user_id": ":bob" },
+    "dave": { "role": "authenticated", "user_id": ":dave" },
+    "admin": { "role": "service_role", "admin": true }
+  },
+
+  "fixtures": {
+    "description": "RLS IS enabled here, so the rls_enabled preflight passes. The failure comes from the policy audit and from the checks. That is deliberate: it proves the pack catches more than a missing ALTER TABLE.",
+    "tables": [
+      { "table": "public.demo_open_using_true", "min_rows": 2, "rls_required": true,
+        "note": "RLS enabled, but the only policy is USING (true)" }
+    ]
+  },
+
+  "checks": [
+    {
+      "id": "control.alice.reads_own_tenant_row",
+      "as": "alice",
+      "sql": "select id, title from public.demo_open_using_true where org_id = :org_a",
+      "expect": "allow",
+      "rows": 1,
+      "why": "The allow half. Passes, and it should: a USING (true) policy lets everything through, including the legitimate query."
+    },
+    {
+      "id": "control.alice.cannot_read_org_b_rows",
+      "as": "alice",
+      "sql": "select id, title, org_id from public.demo_open_using_true where org_id = :org_b",
+      "expect": "deny",
+      "why": "MUST FAIL. RLS is on. There is a policy. The policy says true. Acme's owner reads Globex's row."
+    },
+    {
+      "id": "control.alice.sees_exactly_one_tenant",
+      "as": "alice",
+      "sql": "select id from public.demo_open_using_true",
+      "expect": "rows",
+      "rows": 1,
+      "why": "MUST FAIL: 2 rows, not 1."
+    },
+    {
+      "id": "control.alice.aggregate_count_is_not_scoped",
+      "as": "alice",
+      "sql": "select count(*) from public.demo_open_using_true",
+      "expect": "value",
+      "value": 1,
+      "why": "MUST FAIL: the aggregate counts 2. A dashboard built on this number shows a competitor's volume as your own, and the number looks entirely reasonable."
+    },
+    {
+      "id": "control.dave.reads_nothing",
+      "as": "dave",
+      "sql": "select id, title from public.demo_open_using_true",
+      "expect": "deny",
+      "why": "MUST FAIL. Dave has no memberships, which is exactly what a USING (true) policy cannot express an opinion about."
+    },
+    {
+      "id": "control.alice.cannot_update_bob_row",
+      "as": "alice",
+      "sql": "update public.demo_open_using_true set title = 'PWNED by alice' where org_id = :org_b",
+      "expect": "deny",
+      "mode": "write",
+      "why": "MUST FAIL. Note that the policy also has WITH CHECK (true), so writes are as open as reads. Rolled back."
+    },
+    {
+      "id": "control.alice.cannot_delete_bob_row",
+      "as": "alice",
+      "sql": "delete from public.demo_open_using_true where org_id = :org_b",
+      "expect": "deny",
+      "mode": "write",
+      "why": "MUST FAIL. Rolled back."
+    },
+    {
+      "id": "control.alice.cannot_insert_attributed_to_bob",
+      "as": "alice",
+      "sql": "insert into public.demo_open_using_true (org_id, title, created_by) values (:org_b, 'Injected into Globex', :bob)",
+      "expect": "deny",
+      "mode": "write",
+      "why": "MUST FAIL. WITH CHECK (true) is the clause that makes this possible. Drop WITH CHECK from the policy and PostgreSQL falls back to USING for the check, which here is also true -- so the row goes in either way. The only fix is a policy that says something."
+    },
+    {
+      "id": "control.anon.reads_nothing",
+      "as": "anon",
+      "sql": "select id, title from public.demo_open_using_true",
+      "expect": "deny",
+      "why": "This one PASSES, and the pass is instructive. The permissive policy is declared TO authenticated, so anon is still refused by default-deny. A USING (true) policy scoped to the right role is still a leak, but it is not the same leak as one with no TO clause at all -- which is why the policy audit reports the role list as well as the expression."
+    },
+    {
+      "id": "control.admin.sees_every_row",
+      "as": "admin",
+      "sql": "select id from public.demo_open_using_true",
+      "expect": "rows",
+      "rows": 2,
+      "why": "Anti-vacuity anchor: 2 rows exist."
+    }
+  ]
+}
