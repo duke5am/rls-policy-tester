@@ -112,4 +112,4 @@ checks)**, three more negative controls, the full `POLICY-PITFALLS.md` with 15
 measured pitfalls (including a view that leaks to `anon` and a `TRUNCATE`
 bypass), and `WRITING-POLICIES.md`.
 
-→ **Supabase RLS Policy Test Suite**: <!-- GUMROAD-LINK -->
+→ More developer tooling like this: **[duke5am.gumroad.com](https://duke5am.gumroad.com)** <!-- GUMROAD-LINK -->
