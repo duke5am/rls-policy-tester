@@ -112,4 +112,21 @@ checks)**, three more negative controls, the full `POLICY-PITFALLS.md` with 15
 measured pitfalls (including a view that leaks to `anon` and a `TRUNCATE`
 bypass), and `WRITING-POLICIES.md`.
 
+<!-- RELATED:START -->
+
+## Related tools
+
+- **[pg-perf-check](https://github.com/duke5am/pg-perf-check)** — PostgreSQL performance diagnostics: 24 read-only checks and 7 SQL files for bloat, missing indexes, slow queries, locks and autovacuum.
+  *(if you were searching for "postgres performance tuning queries")*
+- **[pg-restore-drill](https://github.com/duke5am/pg-restore-drill)** — Prove your PostgreSQL backup actually restores: a scripted point-in-time recovery drill with a measured RPO/RTO report and a negative control.
+  *(if you were searching for "test postgres backup restore")*
+- **[postgres-migration-safety-lint](https://github.com/duke5am/postgres-migration-safety-lint)** — Lint SQL migrations before they run: finds statements that take an ACCESS EXCLUSIVE lock, rewrite a table, or destroy data, and gives the safe rewrite.
+  *(if you were searching for "postgres migration lock")*
+
+All 28 tools in this set, grouped by what they check: **[dev-tools-index](https://duke5am.github.io/dev-tools-index/)**
+
+If you arrived here searching for one of these, this is the tool: **supabase rls test** · **row level security testing postgres** · **rls policy leak check** · **multi tenant isolation test**
+
+<!-- RELATED:END -->
+
 → More developer tooling like this: **[duke5am.gumroad.com](https://duke5am.gumroad.com)** <!-- GUMROAD-LINK -->
