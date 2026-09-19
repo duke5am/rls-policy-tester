@@ -129,4 +129,4 @@ If you arrived here searching for one of these, this is the tool: **supabase rls
 
 <!-- RELATED:END -->
 
-→ More developer tooling like this: **[duke5am.gumroad.com](https://duke5am.gumroad.com)** <!-- GUMROAD-LINK -->
+→ **[Supabase RLS Policy Test Suite](https://duke5am.gumroad.com/l/26-supabase-rls-test-suite)** — $34 on Gumroad <!-- GUMROAD-LINK -->
