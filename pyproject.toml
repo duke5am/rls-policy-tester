@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rls-policy-tester"
+version = "0.1.0"
+description = "Prove that user A cannot read user B's rows in Postgres or Supabase, with negative controls that fail when the detector itself is broken"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "duke5am" }]
+keywords = [
+  "postgres", "postgresql", "supabase", "row-level-security", "rls",
+  "multi-tenant", "tenant-isolation", "security-testing", "testing",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Database",
+  "Topic :: Software Development :: Testing",
+  "Topic :: Security",
+]
+# rls_kit/db.py imports psycopg2 at module scope, so the driver is a real
+# requirement, not an optional one: even `--list` cannot import the package
+# without it. The -binary build is used so that installing the wheel needs no
+# libpq headers and no compiler; pg_config is not assumed to exist.
+dependencies = ["psycopg2-binary>=2.9"]
+
+[project.optional-dependencies]
+# definitions.py imports yaml lazily, only when a definition ends in
+# .yaml/.yml, so PyYAML is deliberately not a hard requirement: JSON always
+# works.
+yaml = ["PyYAML>=5.4"]
+
+[project.scripts]
+rls-policy-tester = "rls_kit.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/duke5am/rls-policy-tester"
+Issues = "https://github.com/duke5am/rls-policy-tester/issues"
+
+[tool.setuptools]
+packages = ["rls_kit"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+rls_kit = ["tests_definitions/*.json", "tests_definitions/*.yaml", "example_schema/*.sql"]

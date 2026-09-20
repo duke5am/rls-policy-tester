@@ -1,0 +1,4 @@
+recursive-include rls_kit/tests_definitions *.json *.yaml
+recursive-include rls_kit/example_schema *.sql
+include README.md
+include LICENSE

@@ -1,5 +1,7 @@
 # rls-policy-tester
 
+[![PyPI](https://img.shields.io/pypi/v/rls-policy-tester)](https://pypi.org/project/rls-policy-tester/)
+
 Prove that user A cannot read user B's rows — **and prove the test would catch it
 if they could.**
 
@@ -9,6 +11,10 @@ everyone. There is no compiler for this, and it is the classic way to leak an
 entire table.
 
 ```bash
+pip install rls-policy-tester          # from PyPI, Python 3.9+
+rls-policy-tester --dsn "host=localhost dbname=mydb user=postgres"
+
+# or straight from a clone, no install:
 python3 rls_test_runner.py --dsn "host=localhost dbname=mydb user=postgres" \
     --include-controls
 ```
@@ -74,20 +80,27 @@ session setting, exactly as Supabase does:
 
 ```bash
 createdb rls_demo
-psql rls_demo -f example_schema/00_auth_stub.sql
-psql rls_demo -f example_schema/schema.sql
-psql rls_demo -f example_schema/policies.sql
-psql rls_demo -f example_schema/views.sql
-psql rls_demo -f example_schema/seed.sql
+psql rls_demo -f rls_kit/example_schema/00_auth_stub.sql
+psql rls_demo -f rls_kit/example_schema/schema.sql
+psql rls_demo -f rls_kit/example_schema/policies.sql
+psql rls_demo -f rls_kit/example_schema/views.sql
+psql rls_demo -f rls_kit/example_schema/seed.sql
 
 python3 rls_test_runner.py --dsn "host=localhost dbname=rls_demo user=postgres" \
-    --file tests_definitions/91_negative_control_using_true.json
+    --file rls_kit/tests_definitions/91_negative_control_using_true.json
 ```
+
+The definition files and the example schema live inside the `rls_kit/` package
+because the installed tool loads them from there — the same two files are what
+`rls-policy-tester --include-controls` runs with no `--file` at all, and what the
+`setup:` keys in a definition resolve against. After `pip install`, type
+`python3 -c "import rls_kit, os; print(os.path.dirname(rls_kit.__file__))"` to
+find the installed copy.
 
 Then point it at your own database:
 
 ```bash
-python3 rls_test_runner.py --dsn "$DATABASE_URL" --audit-schema public
+rls-policy-tester --dsn "$DATABASE_URL" --audit-schema public
 ```
 
 **Use the direct connection string, not a transaction pooler** — `SET ROLE` and
@@ -103,6 +116,14 @@ session settings are session state.
   roles it switches to. That connection string is powerful — keep it out of
   version control.
 - Not affiliated with or endorsed by Supabase.
+
+## Requirements
+
+Python 3.9+, PostgreSQL (or Supabase), and `psycopg2` — pulled in automatically
+by `pip install rls-policy-tester`. PyYAML is optional and only needed if you
+write definitions as `.yaml` instead of `.json`
+(`pip install rls-policy-tester[yaml]`). The tool exits 3, not 1, when it could
+not test anything: `1` always means a check really failed.
 
 ## The full pack
 

@@ -13,7 +13,9 @@ Everything that decides pass or fail lives in engine.py. Read that file first
 if you want to know why a check failed.
 """
 
-__version__ = "1.0.0"
+#: Kept in step with the version in pyproject.toml, because
+#: `rls-policy-tester --version` reports this and pip reports that.
+__version__ = "0.1.0"
 __product__ = "Supabase RLS Policy Test Suite"
 
 from .definitions import DefinitionError, SuiteDefinition, load_definition  # noqa: F401

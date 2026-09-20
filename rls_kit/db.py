@@ -92,7 +92,19 @@ def check_reachable(dsn: str, timeout: int = 10) -> None:
     """Fail early, with a readable message, if the server is not there."""
     try:
         conn = psycopg2.connect(dsn, connect_timeout=timeout)
-    except psycopg2.OperationalError as exc:
+    except psycopg2.ProgrammingError as exc:
+        # A DSN that libpq cannot parse raises ProgrammingError, not
+        # OperationalError, so it used to escape this guard as an unhandled
+        # traceback straight out of the command line.
+        raise ConnectionError_(
+            f"cannot use that connection string.\n"
+            f"  dsn: {describe_dsn(dsn)}\n"
+            f"  error: {str(exc).strip()}\n"
+            f"Expected a libpq connection string such as "
+            f"'host=127.0.0.1 port=5432 user=postgres dbname=app', or a URL "
+            f"such as 'postgresql://postgres@127.0.0.1:5432/app'."
+        ) from exc
+    except psycopg2.Error as exc:
         raise ConnectionError_(
             f"cannot connect to PostgreSQL.\n"
             f"  dsn: {describe_dsn(dsn)}\n"
